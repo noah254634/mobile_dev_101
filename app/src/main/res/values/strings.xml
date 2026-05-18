@@ -1,0 +1,21 @@
+<resources>
+
+    <string name="app_name">Attendance2</string>
+
+    <string name="login_title">Login to your account!</string>
+
+    <string name="enter_username">Enter Username:</string>
+
+    <string name="username_hint">your username</string>
+
+    <string name="enter_password">Enter Password:</string>
+
+    <string name="password_hint">your password</string>
+
+    <string name="login_button">Login</string>
+
+    <string name="forgot_password">Forgot Password?</string>
+
+    <string name="register_link">Create an account</string>
+
+</resources>
