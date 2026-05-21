@@ -9,6 +9,8 @@
 /.idea/assetWizardSettings.xml
 /.idea/deploymentTargetDropDown.xml
 /.idea/gradle.xml
+/.idea/shelf/
+/.idea/indexLayout.xml
 .DS_Store
 /build
 /captures
@@ -22,3 +24,13 @@ local.properties
 bin/
 gen/
 out/
+
+# Sensitive Firebase/API Files
+google-services.json
+secrets.properties
+secrets.xml
+
+# Local Gradle Config
+gradle-local.properties
+.gradle/
+build/

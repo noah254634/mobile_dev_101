@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingBottom="16dp">
+
+    <TextView
+        android:id="@+id/itemCourseName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Distributed Systems"
+        android:textColor="@color/white"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/itemCourseCode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="CSC 411"
+        android:textColor="@color/primary_light"
+        android:textSize="14sp"
+        android:layout_marginTop="4dp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#1AFFFFFF"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:id="@+id/itemCourseLecturer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Lecturer: Prof. Dr. Alpha"
+        android:textColor="@color/text_grey"
+        android:textSize="14sp"
+        android:drawablePadding="8dp"
+        app:drawableStartCompat="@android:drawable/ic_menu_myplaces"
+        app:drawableTint="@color/text_grey" />
+
+    <TextView
+        android:id="@+id/itemCourseVenue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Venue: Lab 3 / Room 102"
+        android:textColor="@color/text_grey"
+        android:textSize="14sp"
+        android:layout_marginTop="8dp"
+        android:drawablePadding="8dp"
+        app:drawableStartCompat="@android:drawable/ic_menu_compass"
+        app:drawableTint="@color/text_grey" />
+</LinearLayout>
