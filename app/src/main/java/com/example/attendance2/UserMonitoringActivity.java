@@ -144,14 +144,41 @@ public class UserMonitoringActivity extends AppCompatActivity {
 
     private void unflagUser(Users user) {
         if (user.userId == null) return;
-        
-        mDatabase.child("Users").child(user.userId).child("isFlagged").setValue(false)
-                .addOnSuccessListener(aVoid -> {
-                    Toast.makeText(this, getString(R.string.account_unflagged), Toast.LENGTH_SHORT).show();
-                    // Optional: You could also delete red flags for this user if desired, 
-                    // but keeping them for records is usually better.
+
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Unflag Account")
+                .setMessage("Restore access to this account? This will also permanently delete security flags linked to registration: " + user.registrationNumber)
+                .setPositiveButton("Restore & Cleanup", (dialog, which) -> {
+                    mDatabase.child("Users").child(user.userId).child("isFlagged").setValue(false)
+                            .addOnSuccessListener(aVoid -> {
+                                Toast.makeText(this, getString(R.string.account_unflagged), Toast.LENGTH_SHORT).show();
+                                
+                                // Ripple effect: delete red flags linked to this account
+                                if (user.registrationNumber != null) {
+                                    deleteRedFlagsForUser(user.registrationNumber);
+                                }
+                            })
+                            .addOnFailureListener(e -> Toast.makeText(this, "Action failed: " + e.getMessage(), Toast.LENGTH_SHORT).show());
                 })
-                .addOnFailureListener(e -> Toast.makeText(this, "Action failed: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void deleteRedFlagsForUser(String regNum) {
+        mDatabase.child("RedFlags").addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                for (DataSnapshot flagSnap : snapshot.getChildren()) {
+                    String studentReg = flagSnap.child("studentReg").getValue(String.class);
+                    if (studentReg != null && studentReg.contains(regNum)) {
+                        flagSnap.getRef().removeValue();
+                    }
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        });
     }
 
     private void handleLogout() {

@@ -15,6 +15,7 @@ import android.provider.Settings;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -41,8 +42,10 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -52,13 +55,13 @@ public class StudentsDashboardActivity extends AppCompatActivity {
     private FirebaseAuth mAuth;
     private DatabaseReference mDatabase;
     private FusedLocationProviderClient fusedLocationClient;
-    private TextView welcomeTextView, emailTextView, deviceTextView, timerTextView, deviceIdStatusTextView, currentLatitude, currentLongitude;
-    private TextView regNumberTextView, deptTextView, courseStatCount;
-    private LinearLayout coursesContainer;
-    private MaterialButton logoutButton, enrollCourseButton, viewReportButton, markAttendanceButton;
+    private TextView welcomeTextView, emailTextView, deviceTextView, deviceIdStatusTextView, currentLatitude, currentLongitude;
+    private TextView regNumberTextView, deptTextView, courseStatCount, upcomingHeader, liveSessionsHeader;
+    private LinearLayout coursesContainer, upcomingSessionsContainer, liveSessionsContainer;
+    private MaterialButton logoutButton, enrollCourseButton, viewReportButton;
     private String currentUserId;
     private String currentDeviceId;
-    private Session currentActiveSession;
+    private List<Session> activeSessions = new ArrayList<>();
     private String studentRegistrationNumber;
     private Handler timerHandler = new Handler(Looper.getMainLooper());
     private Runnable timerRunnable;
@@ -87,19 +90,21 @@ public class StudentsDashboardActivity extends AppCompatActivity {
         welcomeTextView = findViewById(R.id.welcomeTextView);
         emailTextView = findViewById(R.id.emailTextView);
         deviceTextView = findViewById(R.id.deviceTextView);
-        timerTextView = findViewById(R.id.timerTextView);
         deviceIdStatusTextView = findViewById(R.id.deviceIdStatusTextView);
         regNumberTextView = findViewById(R.id.regNumberTextView);
         deptTextView = findViewById(R.id.deptTextView);
         courseStatCount = findViewById(R.id.courseStatCount);
         currentLatitude = findViewById(R.id.currentLatitude);
         currentLongitude = findViewById(R.id.currentLongitude);
+        upcomingHeader = findViewById(R.id.upcomingHeader);
+        liveSessionsHeader = findViewById(R.id.liveSessionsHeader);
 
         coursesContainer = findViewById(R.id.coursesContainer);
+        upcomingSessionsContainer = findViewById(R.id.upcomingSessionsContainer);
+        liveSessionsContainer = findViewById(R.id.liveSessionsContainer);
         logoutButton = findViewById(R.id.logoutButton);
         enrollCourseButton = findViewById(R.id.enrollCourseButton);
         viewReportButton = findViewById(R.id.viewReportButton);
-        markAttendanceButton = findViewById(R.id.markAttendanceButton);
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
@@ -122,7 +127,6 @@ public class StudentsDashboardActivity extends AppCompatActivity {
         viewReportButton.setOnClickListener(v -> {
             Toast.makeText(this, "Reports coming soon", Toast.LENGTH_SHORT).show();
         });
-        markAttendanceButton.setOnClickListener(v -> handleMarkAttendance());
     }
 
     private void setupNavigation() {
@@ -174,18 +178,317 @@ public class StudentsDashboardActivity extends AppCompatActivity {
         fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
                 .addOnSuccessListener(this, location -> {
                     if (location != null) {
-                        currentLatitude.setText(String.format(Locale.getDefault(), "%.2f", location.getLatitude()));
-                        currentLongitude.setText(String.format(Locale.getDefault(), "%.2f", location.getLongitude()));
+                        currentLatitude.setText(String.format(Locale.getDefault(), "%.5f", location.getLatitude()));
+                        currentLongitude.setText(String.format(Locale.getDefault(), "%.5f", location.getLongitude()));
                     }
                 });
     }
 
-    private void handleMarkAttendance() {
-        if (currentActiveSession == null) {
-            Toast.makeText(this, R.string.no_active_session, Toast.LENGTH_SHORT).show();
-            return;
+    private void updateActiveSessionsListener() {
+        if (sessionsListener != null) {
+            mDatabase.child("Sessions").removeEventListener(sessionsListener);
         }
 
+        sessionsListener = new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                long currentTime = System.currentTimeMillis();
+                
+                // Clear containers
+                liveSessionsContainer.removeAllViews();
+                upcomingSessionsContainer.removeAllViews();
+                
+                // Track sessions to update presence
+                List<Session> newActiveSessions = new ArrayList<>();
+                int upcomingCount = 0;
+                int totalChecked = 0;
+
+                for (DataSnapshot sessionSnap : snapshot.getChildren()) {
+                    Session session = sessionSnap.getValue(Session.class);
+                    totalChecked++;
+                    if (session != null) {
+                        // Automatic Cleanup: If session time has passed, set active to false in database
+                        if (session.active && session.expiryTime <= currentTime) {
+                            sessionSnap.getRef().child("active").setValue(false);
+                            continue; // Skip showing expired session
+                        }
+
+                        Log.d("StudentsDashboard", "Found session: " + session.courseCode + " id: " + session.courseId + " active: " + session.active);
+                        // Diagnostic: Check if student is actually enrolled in this course
+                        if (enrolledCourseIds.contains(session.courseId)) {
+                            if (session.active && session.expiryTime > currentTime) {
+                                // Allow for larger clock skew for testing
+                                if (session.startTime <= currentTime + 60000) {
+                                    // Live Session
+                                    newActiveSessions.add(session);
+                                    displayLiveSession(session);
+                                } else {
+                                    // Upcoming Session
+                                    displayUpcomingSession(session);
+                                    upcomingCount++;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Update global active sessions and presence
+                activeSessions = newActiveSessions;
+                updatePresence(true);
+
+                if (liveSessionsHeader != null) {
+                    liveSessionsHeader.setVisibility(activeSessions.isEmpty() ? View.GONE : View.VISIBLE);
+                }
+                
+                if (activeSessions.isEmpty() && upcomingCount == 0) {
+                     if (totalChecked > 0) {
+                         Toast.makeText(StudentsDashboardActivity.this, "Found " + totalChecked + " sessions, but none match your enrolled courses.", Toast.LENGTH_LONG).show();
+                     }
+                }
+
+                if (upcomingHeader != null) {
+                    upcomingHeader.setVisibility(upcomingCount > 0 ? View.VISIBLE : View.GONE);
+                }
+                
+                startTimer();
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        };
+        mDatabase.child("Sessions").addValueEventListener(sessionsListener);
+    }
+
+    private void updatePresence(boolean active) {
+        if (currentUserId == null) return;
+        
+        for (Session session : activeSessions) {
+            DatabaseReference presenceRef = mDatabase.child("Presence")
+                    .child(session.sessionId).child(currentUserId);
+            if (active) {
+                presenceRef.setValue(true);
+                presenceRef.onDisconnect().removeValue();
+            } else {
+                presenceRef.removeValue();
+            }
+        }
+    }
+
+    private void displayLiveSession(Session session) {
+        View view = LayoutInflater.from(this).inflate(R.layout.item_live_session, liveSessionsContainer, false);
+        TextView name = view.findViewById(R.id.liveCourseName);
+        TextView timer = view.findViewById(R.id.liveTimer);
+        TextView venueDetails = view.findViewById(R.id.liveVenueDetails);
+        TextView venueCoords = view.findViewById(R.id.liveVenueCoords);
+        TextView lecturerDetails = view.findViewById(R.id.liveLecturerDetails);
+        MaterialButton btnMark = view.findViewById(R.id.btnMarkAttendance);
+
+        name.setText(session.courseName + " (" + session.courseCode + ")");
+        
+        String venueInfo = "Venue: " + session.venue;
+        if (session.radius > 0) {
+            venueInfo += " (" + session.radius + "m range)";
+        }
+        venueDetails.setText(venueInfo);
+
+        if (venueCoords != null) {
+            venueCoords.setText(String.format(Locale.getDefault(), "GPS: %.2f, %.2f", session.latitude, session.longitude));
+            venueCoords.setVisibility(View.VISIBLE);
+        }
+
+        if (lecturerDetails != null) {
+            lecturerDetails.setText("Lecturer: " + session.lecturerEmail);
+        }
+
+        view.setTag(session.sessionId); // Use tag to find and update timer later if needed
+
+        updateSessionTimer(session, timer);
+        checkIfAttendanceMarked(session, btnMark);
+
+        btnMark.setOnClickListener(v -> handleMarkAttendance(session));
+
+        liveSessionsContainer.addView(view);
+    }
+
+    private void updateSessionTimer(Session session, TextView timerView) {
+        long remaining = session.expiryTime - System.currentTimeMillis();
+        if (remaining > 0) {
+            long minutes = remaining / (60 * 1000);
+            long seconds = (remaining % (60 * 1000)) / 1000;
+            timerView.setText(String.format(Locale.getDefault(), "%02d:%02d Remaining", minutes, seconds));
+            timerView.setTextColor(getResources().getColor(android.R.color.holo_green_light));
+        } else {
+            timerView.setText("Expired");
+            timerView.setTextColor(getResources().getColor(android.R.color.holo_red_light));
+        }
+    }
+
+    private void displayUpcomingSession(Session session) {
+        View view = LayoutInflater.from(this).inflate(R.layout.item_upcoming_session, upcomingSessionsContainer, false);
+        TextView name = view.findViewById(R.id.upcomingCourseName);
+        TextView time = view.findViewById(R.id.upcomingTime);
+        TextView venue = view.findViewById(R.id.upcomingVenue);
+        TextView lecturer = view.findViewById(R.id.upcomingLecturer);
+        TextView coords = view.findViewById(R.id.upcomingCoords);
+
+        name.setText(session.courseName + " (" + session.courseCode + ")");
+        
+        String venueInfo = "Venue: " + session.venue;
+        if (session.radius > 0) {
+            venueInfo += " (" + session.radius + "m range)";
+        }
+        venue.setText(venueInfo);
+
+        if (lecturer != null) {
+            lecturer.setText("Lecturer: " + session.lecturerEmail);
+        }
+
+        if (coords != null && (session.latitude != 0 || session.longitude != 0)) {
+            coords.setText(String.format(Locale.getDefault(), "GPS: %.2f, %.2f", session.latitude, session.longitude));
+            coords.setVisibility(View.VISIBLE);
+        }
+
+        long diff = session.startTime - System.currentTimeMillis();
+        long hours = diff / (3600 * 1000);
+        long mins = (diff % (3600 * 1000)) / (60 * 1000);
+
+        if (hours > 0) {
+            time.setText("Starts in " + hours + "h " + mins + "m");
+        } else {
+            time.setText("Starts in " + mins + " mins");
+        }
+
+        upcomingSessionsContainer.addView(view);
+    }
+
+    private void checkIfAttendanceMarked(Session session, View markButton) {
+        mDatabase.child("Attendance").orderByChild("sessionId").equalTo(session.sessionId)
+                .addListenerForSingleValueEvent(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        boolean marked = false;
+                        for (DataSnapshot recordSnap : snapshot.getChildren()) {
+                            AttendanceRecord record = recordSnap.getValue(AttendanceRecord.class);
+                            if (record != null && record.studentId.equals(currentUserId)) {
+                                marked = true;
+                                break;
+                            }
+                        }
+                        markButton.setVisibility(marked ? View.GONE : View.VISIBLE);
+                    }
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {}
+                });
+    }
+
+    private void startTimer() {
+        stopTimer();
+        timerRunnable = new Runnable() {
+            @Override
+            public void run() {
+                long currentTime = System.currentTimeMillis();
+                boolean anyActive = false;
+                
+                for (int i = 0; i < liveSessionsContainer.getChildCount(); i++) {
+                    View view = liveSessionsContainer.getChildAt(i);
+                    String sessionId = (String) view.getTag();
+                    Session session = null;
+                    for (Session s : activeSessions) {
+                        if (s.sessionId.equals(sessionId)) {
+                            session = s;
+                            break;
+                        }
+                    }
+                    
+                    if (session != null) {
+                        TextView timerView = view.findViewById(R.id.liveTimer);
+                        updateSessionTimer(session, timerView);
+                        if (session.expiryTime > currentTime) anyActive = true;
+                    }
+                }
+                
+                if (anyActive) {
+                    timerHandler.postDelayed(this, 1000);
+                }
+            }
+        };
+        timerHandler.post(timerRunnable);
+    }
+
+    private void stopTimer() {
+        if (timerRunnable != null) {
+            timerHandler.removeCallbacks(timerRunnable);
+            timerRunnable = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        updatePresence(false); // Remove presence on exit
+        stopTimer();
+        if (sessionsListener != null) {
+            mDatabase.child("Sessions").removeEventListener(sessionsListener);
+        }
+    }
+
+    private void fetchAndDisplayCourse(String courseId) {
+        mDatabase.child("Courses").child(courseId).addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                Course course = snapshot.getValue(Course.class);
+                if (course != null) {
+                    addCourseToUi(course);
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        });
+    }
+
+    private void addCourseToUi(Course course) {
+        View courseView = LayoutInflater.from(this).inflate(R.layout.item_course_student, coursesContainer, false);
+        TextView name = courseView.findViewById(R.id.itemCourseName);
+        TextView code = courseView.findViewById(R.id.itemCourseCode);
+        TextView lecturer = courseView.findViewById(R.id.itemCourseLecturer);
+        TextView venue = courseView.findViewById(R.id.itemCourseVenue);
+
+        name.setText(course.courseName);
+        code.setText(course.courseCode);
+        lecturer.setText("Lecturer: " + course.lecturerName);
+        venue.setText("Venue: " + course.venue);
+
+        coursesContainer.addView(courseView);
+    }
+
+    private void handleLogout() {
+        mAuth.signOut();
+        redirectToLogin();
+    }
+
+    private void redirectToLogin() {
+        Intent intent = new Intent(StudentsDashboardActivity.this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 1001) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // handleMarkAttendance called again by the button click
+                Toast.makeText(this, "Permission granted. Tap sign in again.", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "Location permission is required to mark attendance", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+    private void handleMarkAttendance(Session session) {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1001);
             return;
@@ -196,9 +499,10 @@ public class StudentsDashboardActivity extends AppCompatActivity {
         fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, null)
                 .addOnSuccessListener(this, location -> {
                     if (location != null) {
-                        currentLatitude.setText(String.format(Locale.getDefault(), "%.2f", location.getLatitude()));
-                        currentLongitude.setText(String.format(Locale.getDefault(), "%.2f", location.getLongitude()));
-                        verifyLocationAndMark(location);
+                        // Display coordinates before verification
+                        currentLatitude.setText(String.format(Locale.getDefault(), "%.5f", location.getLatitude()));
+                        currentLongitude.setText(String.format(Locale.getDefault(), "%.5f", location.getLongitude()));
+                        verifyLocationAndMark(location, session);
                     } else {
                         Toast.makeText(this, "Could not get current location", Toast.LENGTH_SHORT).show();
                     }
@@ -208,55 +512,74 @@ public class StudentsDashboardActivity extends AppCompatActivity {
                 });
     }
 
-    private void verifyLocationAndMark(Location studentLocation) {
-        mDatabase.child("Venues").child(currentActiveSession.venue).addListenerForSingleValueEvent(new ValueEventListener() {
+    private void verifyLocationAndMark(Location studentLocation, Session session) {
+        // Embed verification logic directly using session-carried coordinates
+        if (session.latitude != 0 || session.longitude != 0) {
+            proceedWithVerification(studentLocation, session, session.latitude, session.longitude, session.radius);
+        } else {
+            // Fallback for sessions created before this update
+            fetchVenueAndVerify(studentLocation, session);
+        }
+    }
+
+    private void fetchVenueAndVerify(Location studentLocation, Session session) {
+        if (session.venue == null || session.venue.isEmpty()) {
+            Toast.makeText(this, "Error: Session has no venue assigned.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        mDatabase.child("Venues").child(session.venue).addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 VenueGps venue = snapshot.getValue(VenueGps.class);
                 if (venue != null) {
-                    // Round student coordinates to 2 decimal places
-                    double roundedStudentLat = Math.round(studentLocation.getLatitude() * 100.0) / 100.0;
-                    double roundedStudentLon = Math.round(studentLocation.getLongitude() * 100.0) / 100.0;
-
-                    // Round venue coordinates to 2 decimal places
-                    double roundedVenueLat = Math.round(venue.latitude * 100.0) / 100.0;
-                    double roundedVenueLon = Math.round(venue.longitude * 100.0) / 100.0;
-
-                    if (roundedStudentLat == roundedVenueLat && roundedStudentLon == roundedVenueLon) {
-                        saveAttendanceRecord(studentLocation);
-                    } else {
-                        // Logic fallback: check distance if rounding doesn't match perfectly
-                        float[] results = new float[1];
-                        Location.distanceBetween(studentLocation.getLatitude(), studentLocation.getLongitude(),
-                                venue.latitude, venue.longitude, results);
-                        float distanceInMeters = results[0];
-
-                        if (distanceInMeters <= venue.radius) {
-                            saveAttendanceRecord(studentLocation);
-                        } else {
-                            Toast.makeText(StudentsDashboardActivity.this, R.string.out_of_range, Toast.LENGTH_LONG).show();
-                        }
-                    }
+                    proceedWithVerification(studentLocation, session, venue.latitude, venue.longitude, venue.radius);
                 } else {
-                    Toast.makeText(StudentsDashboardActivity.this, "Venue GPS not configured by Admin", Toast.LENGTH_SHORT).show();
+                    showVenueNotFoundError(session.venue);
                 }
             }
 
             @Override
-            public void onCancelled(@NonNull DatabaseError error) {}
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(StudentsDashboardActivity.this, "Database error", Toast.LENGTH_SHORT).show();
+            }
         });
     }
 
-    private void saveAttendanceRecord(Location location) {
+    private void proceedWithVerification(Location studentLocation, Session session, double venueLat, double venueLon, int radius) {
+        float[] results = new float[1];
+        Location.distanceBetween(
+                studentLocation.getLatitude(), studentLocation.getLongitude(),
+                venueLat, venueLon, results);
+        float distanceInMeters = results[0];
+
+        String distanceInfo = String.format(Locale.getDefault(), "Distance: %.1fm", distanceInMeters);
+
+        if (distanceInMeters <= radius) {
+            saveAttendanceRecord(studentLocation, session);
+            Toast.makeText(StudentsDashboardActivity.this, "In range! " + distanceInfo, Toast.LENGTH_SHORT).show();
+        } else {
+            String errorMsg = String.format(Locale.getDefault(), 
+                    "Too far away! %s. Max allowed: %dm", distanceInfo, radius);
+            Toast.makeText(StudentsDashboardActivity.this, errorMsg, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void showVenueNotFoundError(String venueId) {
+        String msg = "Location configuration not found for: " + venueId + ". Please contact Admin.";
+        Toast.makeText(StudentsDashboardActivity.this, msg, Toast.LENGTH_LONG).show();
+    }
+
+    private void saveAttendanceRecord(Location location, Session session) {
         String attendanceId = mDatabase.child("Attendance").push().getKey();
         long timestamp = System.currentTimeMillis();
 
         AttendanceRecord record = new AttendanceRecord(
                 attendanceId,
-                currentActiveSession.sessionId,
+                session.sessionId,
                 currentUserId,
                 studentRegistrationNumber,
-                currentActiveSession.courseId,
+                session.courseId,
                 timestamp,
                 currentDeviceId,
                 location.getLatitude(),
@@ -267,7 +590,6 @@ public class StudentsDashboardActivity extends AppCompatActivity {
             mDatabase.child("Attendance").child(attendanceId).setValue(record)
                     .addOnSuccessListener(aVoid -> {
                         Toast.makeText(this, R.string.attendance_marked, Toast.LENGTH_SHORT).show();
-                        markAttendanceButton.setVisibility(View.GONE);
                     })
                     .addOnFailureListener(e -> Toast.makeText(this, "Failed to save attendance", Toast.LENGTH_SHORT).show());
         }
@@ -277,7 +599,8 @@ public class StudentsDashboardActivity extends AppCompatActivity {
         String androidId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         String deviceName = Build.MANUFACTURER + " " + Build.MODEL;
 
-        mDatabase.child("Users").child(currentUserId).addValueEventListener(new ValueEventListener() {
+        // Use single value event for device binding to avoid logout loops during activity setup
+        mDatabase.child("Users").child(currentUserId).addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 Student student = snapshot.getValue(Student.class);
@@ -295,6 +618,20 @@ public class StudentsDashboardActivity extends AppCompatActivity {
                         currentDeviceId = androidId;
                         updateDeviceInfoUi(androidId);
                     }
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        });
+
+        // Separate real-time listener for isFlagged status only
+        mDatabase.child("Users").child(currentUserId).child("isFlagged").addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                Boolean isFlagged = snapshot.getValue(Boolean.class);
+                if (isFlagged != null && isFlagged) {
+                    showFlaggedAccountDialog();
                 }
             }
 
@@ -326,7 +663,7 @@ public class StudentsDashboardActivity extends AppCompatActivity {
             @Override
             public void onDataChange(@NonNull DataSnapshot snapshot) {
                 isDeviceCheckInProgress = false;
-                boolean anotherOwnerFound = false;
+                boolean ownerFound = false;
                 if (snapshot.exists()) {
                     for (DataSnapshot userSnap : snapshot.getChildren()) {
                         String foundUserId = userSnap.getKey();
@@ -337,12 +674,12 @@ public class StudentsDashboardActivity extends AppCompatActivity {
                         Student otherStudent = userSnap.getValue(Student.class);
                         if (otherStudent != null) {
                             reportIdentityAnomaly(currentStudent, otherStudent, androidId);
-                            anotherOwnerFound = true;
+                            ownerFound = true;
                         }
                     }
                 }
                 
-                if (anotherOwnerFound) {
+                if (ownerFound) {
                     showDeviceMismatchDialog("Another registered student's device");
                 } else {
                     bindDevice(androidId, deviceName);
@@ -522,173 +859,7 @@ public class StudentsDashboardActivity extends AppCompatActivity {
         });
     }
 
-    private void updateActiveSessionsListener() {
-        if (sessionsListener != null) {
-            mDatabase.child("Sessions").removeEventListener(sessionsListener);
-        }
-
-        sessionsListener = new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                long currentTime = System.currentTimeMillis();
-                boolean found = false;
-                for (DataSnapshot sessionSnap : snapshot.getChildren()) {
-                    Session session = sessionSnap.getValue(Session.class);
-                    if (session != null && session.active && session.expiryTime > currentTime && enrolledCourseIds.contains(session.courseId)) {
-                        currentActiveSession = session;
-                        checkIfAttendanceMarked(session);
-                        displayActiveSession(session);
-                        found = true;
-                        break; 
-                    }
-                }
-                if (!found) {
-                    currentActiveSession = null;
-                    stopTimer();
-                    resetTimerUi();
-                }
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {}
-        };
-        mDatabase.child("Sessions").addValueEventListener(sessionsListener);
-    }
-
-    private void checkIfAttendanceMarked(Session session) {
-        mDatabase.child("Attendance").orderByChild("sessionId").equalTo(session.sessionId)
-                .addListenerForSingleValueEvent(new ValueEventListener() {
-                    @Override
-                    public void onDataChange(@NonNull DataSnapshot snapshot) {
-                        boolean marked = false;
-                        for (DataSnapshot recordSnap : snapshot.getChildren()) {
-                            AttendanceRecord record = recordSnap.getValue(AttendanceRecord.class);
-                            if (record != null && record.studentId.equals(currentUserId)) {
-                                marked = true;
-                                break;
-                            }
-                        }
-                        if (marked) {
-                            markAttendanceButton.setVisibility(View.GONE);
-                        } else {
-                            markAttendanceButton.setVisibility(View.VISIBLE);
-                        }
-                    }
-
-                    @Override
-                    public void onCancelled(@NonNull DatabaseError error) {}
-                });
-    }
-
-    private void displayActiveSession(Session session) {
-        if (timerTextView != null) {
-            long remaining = session.expiryTime - System.currentTimeMillis();
-            if (remaining > 0) {
-                long minutes = remaining / (60 * 1000);
-                long seconds = (remaining % (60 * 1000)) / 1000;
-                timerTextView.setText(String.format(Locale.getDefault(), "%02d:%02d Remaining (%s)", minutes, seconds, session.courseCode));
-                timerTextView.setTextColor(getResources().getColor(android.R.color.holo_green_light));
-            } else {
-                currentActiveSession = null;
-                stopTimer();
-                resetTimerUi();
-                return;
-            }
-        }
-
-        if (timerRunnable == null) {
-            timerRunnable = new Runnable() {
-                @Override
-                public void run() {
-                    if (currentActiveSession != null) {
-                        displayActiveSession(currentActiveSession);
-                        timerHandler.postDelayed(this, 1000);
-                    } else {
-                        stopTimer();
-                    }
-                }
-            };
-            timerHandler.post(timerRunnable);
-        }
-    }
-
-    private void resetTimerUi() {
-        if (timerTextView != null) {
-            timerTextView.setText("No Active Session");
-            timerTextView.setTextColor(getResources().getColor(R.color.primary_light));
-        }
-        if (markAttendanceButton != null) {
-            markAttendanceButton.setVisibility(View.GONE);
-        }
-    }
-
-    private void stopTimer() {
-        if (timerRunnable != null) {
-            timerHandler.removeCallbacks(timerRunnable);
-            timerRunnable = null;
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        stopTimer();
-        if (sessionsListener != null) {
-            mDatabase.child("Sessions").removeEventListener(sessionsListener);
-        }
-    }
-
-    private void fetchAndDisplayCourse(String courseId) {
-        mDatabase.child("Courses").child(courseId).addListenerForSingleValueEvent(new ValueEventListener() {
-            @Override
-            public void onDataChange(@NonNull DataSnapshot snapshot) {
-                Course course = snapshot.getValue(Course.class);
-                if (course != null) {
-                    addCourseToUi(course);
-                }
-            }
-
-            @Override
-            public void onCancelled(@NonNull DatabaseError error) {}
-        });
-    }
-
-    private void addCourseToUi(Course course) {
-        View courseView = LayoutInflater.from(this).inflate(R.layout.item_course_student, coursesContainer, false);
-        TextView name = courseView.findViewById(R.id.itemCourseName);
-        TextView code = courseView.findViewById(R.id.itemCourseCode);
-        TextView lecturer = courseView.findViewById(R.id.itemCourseLecturer);
-        TextView venue = courseView.findViewById(R.id.itemCourseVenue);
-
-        name.setText(course.courseName);
-        code.setText(course.courseCode);
-        lecturer.setText("Lecturer: " + course.lecturerName);
-        venue.setText("Venue: " + course.venue);
-
-        coursesContainer.addView(courseView);
-    }
-
-    private void handleLogout() {
-        mAuth.signOut();
-        redirectToLogin();
-    }
-
-    private void redirectToLogin() {
-        Intent intent = new Intent(StudentsDashboardActivity.this, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        startActivity(intent);
-        finish();
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == 1001) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                handleMarkAttendance();
-            } else {
-                Toast.makeText(this, "Location permission is required to mark attendance", Toast.LENGTH_SHORT).show();
-            }
-        }
+    private void loadEnrolledCoursesLegacy() {
+        // Keeping this for reference or potential fallback
     }
 }

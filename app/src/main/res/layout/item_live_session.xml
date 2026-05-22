@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    app:cardCornerRadius="20dp"
+    app:cardBackgroundColor="@color/card_dark"
+    app:strokeColor="#333333"
+    app:strokeWidth="1dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="20dp"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_dialog_info"
+            app:tint="@color/primary_light"
+            android:layout_marginEnd="16dp"
+            android:contentDescription="@string/live_session" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/liveCourseName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Course Name"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/liveVenueDetails"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Venue: Lab 3 (50m range)"
+                android:textColor="@color/text_grey"
+                android:textSize="13sp"
+                android:layout_marginTop="2dp"
+                android:drawablePadding="6dp"
+                app:drawableStartCompat="@android:drawable/ic_menu_compass"
+                app:drawableTint="@color/text_grey" />
+
+            <TextView
+                android:id="@+id/liveVenueCoords"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="GPS: -1.23, 36.78"
+                android:textColor="@color/text_grey"
+                android:textSize="11sp"
+                android:layout_marginTop="1dp"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <TextView
+                android:id="@+id/liveLecturerDetails"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Lecturer: lecturer@university.ac.ke"
+                android:textColor="@color/text_grey"
+                android:textSize="12sp"
+                android:layout_marginTop="2dp"
+                android:drawablePadding="6dp"
+                app:drawableStartCompat="@android:drawable/ic_menu_myplaces"
+                app:drawableTint="@color/text_grey" />
+
+            <TextView
+                android:id="@+id/liveTimer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="00:45:12 Remaining"
+                android:textColor="@android:color/holo_green_light"
+                android:textSize="13sp"
+                android:layout_marginTop="6dp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnMarkAttendance"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/mark_attendance"
+            android:textSize="11sp"
+            app:cornerRadius="12dp"
+            android:layout_marginStart="8dp" />
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

@@ -130,9 +130,14 @@ public class CourseDiscoveryActivity extends AppCompatActivity {
                 .setTitle(R.string.confirm_enrollment)
                 .setMessage(getString(R.string.enroll_confirm_msg, course.courseName))
                 .setPositiveButton(R.string.enroll_button, (dialog, which) -> {
+                    // Update user's profile
                     mDatabase.child("Users").child(currentUserId).child("enrolledCourses")
                             .child(course.courseId).setValue(true)
                             .addOnSuccessListener(aVoid -> {
+                                // Also update course's enrolled students list
+                                mDatabase.child("Courses").child(course.courseId).child("enrolledStudents")
+                                        .child(currentUserId).setValue(true);
+
                                 Toast.makeText(CourseDiscoveryActivity.this, 
                                         getString(R.string.enrollment_success, course.courseCode), 
                                         Toast.LENGTH_SHORT).show();

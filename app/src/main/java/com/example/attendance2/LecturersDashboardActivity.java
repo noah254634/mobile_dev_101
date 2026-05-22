@@ -88,6 +88,7 @@ public class LecturersDashboardActivity extends AppCompatActivity {
             loadDashboardData();
             loadRecentRedFlags();
             loadAssignedCourses();
+            loadActiveSessionsCount();
 
             if (logoutButton != null) {
                 logoutButton.setOnClickListener(v -> handleLogout());
@@ -131,7 +132,7 @@ public class LecturersDashboardActivity extends AppCompatActivity {
                 if (itemId == R.id.nav_home) {
                     return true;
                 } else if (itemId == R.id.nav_sessions) {
-                    Toast.makeText(this, "Attendance Sessions coming soon", Toast.LENGTH_SHORT).show();
+                    startActivity(new Intent(this, LecturerSessionsActivity.class));
                     return true;
                 } else if (itemId == R.id.nav_reports) {
                     Toast.makeText(this, "Reports coming soon", Toast.LENGTH_SHORT).show();
@@ -214,16 +215,90 @@ public class LecturersDashboardActivity extends AppCompatActivity {
     }
 
     private void startNewSession(Course course, int durationMinutes) {
+        if (course.venue == null || course.venue.isEmpty()) {
+            Toast.makeText(this, "Error: Course has no venue assigned", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        // Fetch venue details and then show confirmation
+        mDatabase.child("Venues").addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                VenueGps foundVenue = null;
+                
+                // 1. Try lookup by key (venueCode)
+                if (snapshot.hasChild(course.venue)) {
+                    foundVenue = snapshot.child(course.venue).getValue(VenueGps.class);
+                }
+                
+                // 2. Try search by venueName or venueCode inside objects if key lookup failed
+                if (foundVenue == null) {
+                    for (DataSnapshot venueSnap : snapshot.getChildren()) {
+                        VenueGps v = venueSnap.getValue(VenueGps.class);
+                        if (v != null && (course.venue.equalsIgnoreCase(v.venueCode) || course.venue.equalsIgnoreCase(v.venueName))) {
+                            foundVenue = v;
+                            break;
+                        }
+                    }
+                }
+
+                if (foundVenue != null) {
+                    final VenueGps finalVenue = foundVenue;
+                    new androidx.appcompat.app.AlertDialog.Builder(LecturersDashboardActivity.this)
+                            .setTitle("Confirm Session Details")
+                            .setMessage(String.format(Locale.getDefault(), 
+                                    "Course: %s\nVenue: %s\nCoordinates: %.5f, %.5f\nRadius: %dm\nDuration: %d Minutes",
+                                    course.courseCode, finalVenue.venueName, finalVenue.latitude, finalVenue.longitude, finalVenue.radius, durationMinutes))
+                            .setPositiveButton("Start Session", (dialog, which) -> {
+                                createSessionWithVenue(course, durationMinutes, finalVenue);
+                            })
+                            .setNegativeButton("Cancel", null)
+                            .show();
+                } else {
+                    String errorMsg = "Venue '" + course.venue + "' GPS is not configured. Available venues: ";
+                    for (DataSnapshot vs : snapshot.getChildren()) {
+                        VenueGps vg = vs.getValue(VenueGps.class);
+                        if (vg != null) errorMsg += vg.venueCode + ", ";
+                    }
+                    new androidx.appcompat.app.AlertDialog.Builder(LecturersDashboardActivity.this)
+                            .setTitle("Configuration Error")
+                            .setMessage(errorMsg)
+                            .setPositiveButton("OK", null)
+                            .show();
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                Toast.makeText(LecturersDashboardActivity.this, "Database error: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    private void createSessionWithVenue(Course course, int durationMinutes, VenueGps venueGps) {
         String sessionId = mDatabase.child("Sessions").push().getKey();
         long startTime = System.currentTimeMillis();
         long expiryTime = startTime + ((long) durationMinutes * 60 * 1000);
 
-        Session session = new Session(sessionId, course.courseId, course.courseCode, course.courseName, course.lecturerEmail, course.venue, startTime, expiryTime);
+        // Create session with embedded coordinates
+        Session session = new Session(
+                sessionId, 
+                course.courseId, 
+                course.courseCode, 
+                course.courseName, 
+                course.lecturerEmail, 
+                venueGps.venueCode, // Use code from venue object
+                venueGps.latitude, 
+                venueGps.longitude, 
+                venueGps.radius, 
+                startTime, 
+                expiryTime
+        );
 
         if (sessionId != null) {
             mDatabase.child("Sessions").child(sessionId).setValue(session)
                     .addOnSuccessListener(aVoid -> {
-                        Toast.makeText(this, "Session started for " + course.courseCode, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Session started at " + venueGps.venueName, Toast.LENGTH_SHORT).show();
                     })
                     .addOnFailureListener(e -> Toast.makeText(this, "Failed to start session", Toast.LENGTH_SHORT).show());
         }
@@ -279,6 +354,40 @@ public class LecturersDashboardActivity extends AppCompatActivity {
             upcomingCountTextView.setText("0");
             pendingCountTextView.setText("0");
         }
+    }
+
+    private void loadActiveSessionsCount() {
+        if (mAuth.getCurrentUser() == null) return;
+        String email = mAuth.getCurrentUser().getEmail();
+        if (email == null) return;
+
+        mDatabase.child("Sessions").orderByChild("lecturerEmail").equalTo(email)
+                .addValueEventListener(new ValueEventListener() {
+                    @Override
+                    public void onDataChange(@NonNull DataSnapshot snapshot) {
+                        int activeCount = 0;
+                        long currentTime = System.currentTimeMillis();
+                        for (DataSnapshot sessionSnap : snapshot.getChildren()) {
+                            Session session = sessionSnap.getValue(Session.class);
+                            if (session != null) {
+                                if (session.active) {
+                                    if (session.expiryTime <= currentTime) {
+                                        // Auto-Cleanup: Set active to false if expired
+                                        sessionSnap.getRef().child("active").setValue(false);
+                                    } else {
+                                        activeCount++;
+                                    }
+                                }
+                            }
+                        }
+                        if (pendingCountTextView != null) {
+                            pendingCountTextView.setText(String.valueOf(activeCount));
+                        }
+                    }
+
+                    @Override
+                    public void onCancelled(@NonNull DatabaseError error) {}
+                });
     }
 
     private void handleLogout() {

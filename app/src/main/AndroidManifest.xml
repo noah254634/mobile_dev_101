@@ -16,6 +16,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Attendance2">
         <activity
+            android:name=".LecturerSessionsActivity"
+            android:exported="false" />
+        <activity
+            android:name=".SessionDetailsActivity"
+            android:exported="false" />
+        <activity
             android:name=".ManageCoursesActivity"
             android:exported="false" />
         <activity

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="12dp"
+    app:cardCornerRadius="16dp"
+    app:cardBackgroundColor="@color/card_dark"
+    app:strokeColor="#333333"
+    app:strokeWidth="1dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/upcomingCourseName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Course Name"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/upcomingLecturer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Lecturer Email"
+                android:textColor="@color/text_grey"
+                android:textSize="12sp"
+                android:layout_marginTop="2dp" />
+
+            <TextView
+                android:id="@+id/upcomingCoords"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="GPS: -1.23, 36.78"
+                android:textColor="@color/text_grey"
+                android:textSize="11sp"
+                android:layout_marginTop="1dp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/upcomingTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Starts in 10 mins"
+                android:textColor="@color/primary_light"
+                android:textSize="13sp"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/upcomingVenue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Venue"
+            android:textColor="@color/text_grey"
+            android:textSize="12sp"
+            android:drawablePadding="4dp"
+            app:drawableStartCompat="@android:drawable/ic_menu_compass"
+            app:drawableTint="@color/text_grey" />
+
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

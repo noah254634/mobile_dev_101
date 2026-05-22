@@ -7,6 +7,7 @@ public class Users {
     public String role;
     public long lastLogin;
     public boolean isFlagged;
+    public String registrationNumber;
 
     public Users() {
         // Default constructor for Firebase

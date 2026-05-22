@@ -34,3 +34,4 @@ secrets.xml
 gradle-local.properties
 .gradle/
 build/
+*.log

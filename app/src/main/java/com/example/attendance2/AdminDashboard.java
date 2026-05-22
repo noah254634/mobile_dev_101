@@ -162,12 +162,14 @@ public class AdminDashboard extends AppCompatActivity {
         android.view.View dialogView = android.view.LayoutInflater.from(this).inflate(R.layout.dialog_create_course, null);
         EditText editName = dialogView.findViewById(R.id.editCourseName);
         EditText editCode = dialogView.findViewById(R.id.editCourseCode);
-        EditText editVenue = dialogView.findViewById(R.id.editCourseVenue);
+        Spinner venueSpinner = dialogView.findViewById(R.id.venueSpinner);
         Spinner lecturerSpinner = dialogView.findViewById(R.id.lecturerSpinner);
 
-        // Fetch lecturers from database
+        // Fetch data
         java.util.List<String> lecturerEmails = new java.util.ArrayList<>();
         java.util.List<String> lecturerNames = new java.util.ArrayList<>();
+        java.util.List<String> venueCodes = new java.util.ArrayList<>();
+        java.util.List<String> venueNames = new java.util.ArrayList<>();
         
         mDatabase.child("Users").orderByChild("role").equalTo("lecturer").addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
@@ -188,21 +190,41 @@ public class AdminDashboard extends AppCompatActivity {
             public void onCancelled(@NonNull DatabaseError error) {}
         });
 
+        mDatabase.child("Venues").addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                for (DataSnapshot venueSnap : snapshot.getChildren()) {
+                    VenueGps venue = venueSnap.getValue(VenueGps.class);
+                    if (venue != null) {
+                        venueCodes.add(venue.venueCode);
+                        venueNames.add(venue.venueName + " (" + venue.venueCode + ")");
+                    }
+                }
+                ArrayAdapter<String> venueAdapter = new ArrayAdapter<>(AdminDashboard.this, android.R.layout.simple_spinner_item, venueNames);
+                venueAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+                venueSpinner.setAdapter(venueAdapter);
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {}
+        });
+
         new androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle(R.string.create_course_title)
                 .setView(dialogView)
                 .setPositiveButton(R.string.create_button, (dialog, which) -> {
                     String name = editName.getText().toString().trim();
                     String code = editCode.getText().toString().trim();
-                    String venue = editVenue.getText().toString().trim();
-                    int selectedPos = lecturerSpinner.getSelectedItemPosition();
+                    int lPos = lecturerSpinner.getSelectedItemPosition();
+                    int vPos = venueSpinner.getSelectedItemPosition();
 
-                    if (!name.isEmpty() && !code.isEmpty() && !venue.isEmpty() && selectedPos != -1) {
-                        String selectedLecturerEmail = lecturerEmails.get(selectedPos);
-                        String selectedLecturerName = lecturerNames.get(selectedPos).split(" \\(")[0];
-                        createNewCourse(name, code, venue, selectedLecturerName, selectedLecturerEmail);
+                    if (!name.isEmpty() && !code.isEmpty() && lPos != -1 && vPos != -1) {
+                        String selectedLecturerEmail = lecturerEmails.get(lPos);
+                        String selectedLecturerName = lecturerNames.get(lPos).split(" \\(")[0];
+                        String selectedVenueCode = venueCodes.get(vPos);
+                        createNewCourse(name, code, selectedVenueCode, selectedLecturerName, selectedLecturerEmail);
                     } else {
-                        Toast.makeText(this, "Please fill all fields and select a lecturer", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "Please fill all fields and select data", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("Cancel", null)

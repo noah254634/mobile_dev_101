@@ -114,16 +114,17 @@ public class AddGpsActivity extends AppCompatActivity {
                     if (location != null) {
                         currentLat = location.getLatitude();
                         currentLon = location.getLongitude();
-                        latitudeEditText.setText(String.format(Locale.getDefault(), "%.2f", currentLat));
-                        longitudeEditText.setText(String.format(Locale.getDefault(), "%.2f", currentLon));
+                        // Use 6 decimal places for geofencing precision (~11cm)
+                        latitudeEditText.setText(String.format(Locale.getDefault(), "%.6f", currentLat));
+                        longitudeEditText.setText(String.format(Locale.getDefault(), "%.6f", currentLon));
                         Toast.makeText(this, "Current location captured", Toast.LENGTH_SHORT).show();
                     } else {
                         fusedLocationClient.getLastLocation().addOnSuccessListener(this, lastLoc -> {
                             if (lastLoc != null) {
                                 currentLat = lastLoc.getLatitude();
                                 currentLon = lastLoc.getLongitude();
-                                latitudeEditText.setText(String.format(Locale.getDefault(), "%.2f", currentLat));
-                                longitudeEditText.setText(String.format(Locale.getDefault(), "%.2f", currentLon));
+                                latitudeEditText.setText(String.format(Locale.getDefault(), "%.6f", currentLat));
+                                longitudeEditText.setText(String.format(Locale.getDefault(), "%.6f", currentLon));
                                 Toast.makeText(this, "Location captured (from cache)", Toast.LENGTH_SHORT).show();
                             } else {
                                 Toast.makeText(this, "Could not get location. Ensure GPS is enabled.", Toast.LENGTH_LONG).show();
